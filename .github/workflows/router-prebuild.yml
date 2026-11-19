@@ -1,0 +1,36 @@
+name: Prebuild for home router
+
+# Builds AmneziaWG packages for the newest stable OpenWrt as soon as it is out, so the home
+# router (TP-Link Archer C7 v4, ath79/generic) can upgrade without waiting for a build.
+# The router finds them via `router-update` (sara-hosting/deploy/router).
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  prebuild:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TARGET: ath79
+      SUBTARGET: generic
+      ARCH: mips_24kc
+    steps:
+      - name: Build packages for the latest OpenWrt if missing
+        run: |
+          set -euo pipefail
+          v=$(curl -fsSL https://downloads.openwrt.org/.versions.json | jq -r .stable_version)
+          asset="kmod-amneziawg_v${v}_${ARCH}_${TARGET}_${SUBTARGET}.apk"
+          if gh release view "v$v" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$asset"; then
+            echo "OpenWrt $v: packages already built"
+            exit 0
+          fi
+          echo "OpenWrt $v: building $TARGET/$SUBTARGET"
+          gh workflow run build-module.yml -f version="$v" -f targets="$TARGET" -f subtargets="$SUBTARGET"
